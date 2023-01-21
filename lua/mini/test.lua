@@ -1100,12 +1100,18 @@ MiniTest.new_child_neovim = function()
     child.job = job
     start_args, start_opts = args, opts
 
-    -- Close immediately on Neovim>=0.9 to avoid hanging (see
-    -- https://github.com/neovim/neovim/issues/21630)
     if vim.fn.has('nvim-0.9') == 1 then
+      -- Close immediately on Neovim>=0.9 to avoid hanging (see
+      -- https://github.com/neovim/neovim/issues/21630)
       child.job.stdin:close()
       child.job.stdout:close()
       child.job.stderr:close()
+
+      -- Attach UI to have `screenstring()` work correctly (see
+      -- https://github.com/neovim/neovim/issues/21886)
+      vim.loop.spawn(opts.nvim_executable, { args = { '--remote-ui', '--server', job.address } }, function() end)
+      -- - Add a safety sleep to ensure that ui is up and running
+      vim.loop.sleep(10)
     end
   end
 
