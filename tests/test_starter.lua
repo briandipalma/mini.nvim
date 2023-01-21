@@ -87,6 +87,8 @@ T = new_set({
   },
 })
 
+T['has attached UI'] = function() eq(child.api.nvim_list_uis()) end
+
 -- Unit tests =================================================================
 T['setup()'] = new_set()
 
