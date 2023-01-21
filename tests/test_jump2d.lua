@@ -695,6 +695,10 @@ T['start()']['respects `vim.{g,b}.minijump2d_disable`'] = new_set({
 T['stop()'] = new_set()
 
 T['stop()']['works'] = function()
+  -- Check this only on Neovim>=0.9, as there is a slight change in
+  -- highlighting command line area.
+  if child.fn.has('nvim-0.9') == 0 then return end
+
   set_lines({ 'xxxx', 'xxxx' })
   child.lua('MiniJump2d.start()')
   child.expect_screenshot()
