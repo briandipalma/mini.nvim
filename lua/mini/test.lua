@@ -1062,7 +1062,7 @@ MiniTest.new_child_neovim = function()
     end
 
     args = args or {}
-    opts = vim.tbl_deep_extend('force', { nvim_executable = vim.v.progpath, connection_timeout = 5000 }, opts or {})
+    opts = vim.tbl_deep_extend('force', { nvim_executable = vim.v.progpath, connection_timeout = 500 }, opts or {})
 
     -- Using 'libuv' for creating a job is crucial for getting this to work in
     -- Github Actions. Other approaches:
@@ -1083,20 +1083,16 @@ MiniTest.new_child_neovim = function()
       args = full_args,
     }, function() end)
 
-    local step = 10
-    local connected, i, max_tries = nil, 0, math.floor(opts.connection_timeout / step)
-    repeat
-      i = i + 1
-      vim.loop.sleep(step)
-      connected, job.channel = pcall(vim.fn.sockconnect, 'pipe', job.address, { rpc = true })
-    until connected or i >= max_tries
+    local connected, channel =
+      H.repeat_try(vim.fn.sockconnect, opts.connection_timeout, 'pipe', job.address, { rpc = true })
 
     if not connected then
-      local err = '  ' .. job.channel:gsub('\n', '\n  ')
+      local err = '  ' .. channel:gsub('\n', '\n  ')
       H.error('Failed to make connection to child Neovim with the following error:\n' .. err)
       child.stop()
     end
 
+    job.channel = channel
     child.job = job
     start_args, start_opts = args, opts
 
@@ -1110,8 +1106,16 @@ MiniTest.new_child_neovim = function()
       -- Attach UI to have `screenstring()` work correctly (see
       -- https://github.com/neovim/neovim/issues/21886)
       vim.loop.spawn(opts.nvim_executable, { args = { '--remote-ui', '--server', job.address } }, function() end)
-      -- - Add a safety sleep to ensure that ui is up and running
-      vim.loop.sleep(10)
+
+      -- - Ensure that it is indeed attached (matters for GitHub CI)
+      local has_ui, _ = H.repeat_try(function()
+        local uis = vim.rpcrequest(channel, 'nvim_list_uis')
+        if #uis == 0 then error() end
+      end, opts.connection_timeout)
+      if not has_ui then
+        H.error('Failed to connect remote UI')
+        child.stop()
+      end
     end
   end
 
@@ -2269,6 +2273,19 @@ H.string_to_chars = function(s)
     table.insert(res, vim.fn.strcharpart(s, i - 1, 1))
   end
   return res
+end
+
+H.repeat_try = function(callback, timeout, ...)
+  local step = 10
+  local is_success, result = false, nil
+  local i, max_tries = 0, math.floor(timeout / step)
+  repeat
+    i = i + 1
+    vim.loop.sleep(step)
+    is_success, result = pcall(callback, ...)
+  until is_success or i >= max_tries
+
+  return is_success, result
 end
 
 return MiniTest
